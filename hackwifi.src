@@ -1,8 +1,15 @@
+// Print usage details
+print_usage = function()
+	print("<b>Usage: hackwifi (opt: number_of_listings=10)</b>")
+end function
+
+// --- Network ----------------------------------
 Network = {}
 Network.bssid = ""
 Network.power = 0
 Network.essid = ""
-Network.parse = function(net_string)
+
+Network.init = function(net_string)
 	net_parts = net_string.split(" ")
 	new_network = new Network
 	new_network.bssid = net_parts[0]
@@ -11,53 +18,96 @@ Network.parse = function(net_string)
 	return new_network
 end function
 
-computer = get_shell.host_computer
-networks = computer.wifi_networks("wlan0")
-cwd = current_path
+// --- Helpers ---------------------------------------
+// Network listings and selection.
+// Returns: Network object
+select_wifi = function(count)
+	computer = get_shell.host_computer
+	networks = computer.wifi_networks("wlan0")
 
-print()
-print("--- Top 10 Wifi Networks ---")
-best_network = new Network
-sorted_networks = []
-i = 0
-for net in networks
-	current_network = Network.parse(net)
-	sorted_networks.push(current_network)
-	if current_network.power > best_network.power then
-		best_network = current_network
+	if count > networks.len then count = networks.len
+
+	// Sort networks by power
+	chosen_network = new Network
+	sorted_networks = []
+	i = 0
+	for net in networks
+		current_network = Network.init(net)
+		sorted_networks.push(current_network)
+		if current_network.power > chosen_network.power then
+			chosen_network = current_network
+		end if
+		i = i + 1
+	end for
+
+	// Print networks
+	if count > 0 then
+		print
+		print("<b>--- Top " + count + " Wifi Networks ---</b>")
+		i = 0
+		sorted_networks.sort("power")
+		sorted_networks.reverse()
+		while i < count
+			net = sorted_networks[i]
+			print("<b>[" + i + "]</b> " + net.essid + ": " + net.power + "%")
+			i = i + 1
+		end while
+
+		// User input
+		index = user_input("<b>Choose a network (default: highest power):</b> ")
+		if index != "" then 
+			chosen_network = sorted_networks[index.to_int]
+		end if
 	end if
-	i = i + 1
-end for
 
-i = 0
-sorted_networks.sort("power")
-sorted_networks.reverse()
-while i < 10
-	net = sorted_networks[i]
-	print("<b>[" + i + "]</b> " + net.essid + ": " + net.power + "%")
-	i = i + 1
-end while
+	return chosen_network
+end function
 
-index = user_input("Choose a network: ")
-if index != "" then 
-	best_network = sorted_networks[index.to_int]
+// Perform wifi hack on Network object
+hack_wifi = function(chosen_network, crypto)
+	computer = get_shell.host_computer
+	cwd = current_path
+
+	// Rough estimate, should handle anything over 50%
+	acks = 3000 + ((1 - (chosen_network.power / 100)) * 6250)
+
+	print
+	print("<b>--- Capturing Packets ---</b>")
+	print("<b>ESSID:</b> " + chosen_network.essid)
+	print("<b>BSSID:</b> " + chosen_network.bssid)
+	print("<b>Power:</b> " + chosen_network.power + "%")
+	print("<b>Capturing:</b> ~" + acks + " ACKs\n")
+
+	crypto.airmon("start", "wlan0")
+	crypto.aireplay(chosen_network.bssid, chosen_network.essid, acks)
+	print
+
+	print("<b>--- Password ---</b>")
+	capture_file = computer.File(cwd + "/file.cap")
+	password = crypto.aircrack(capture_file.path)
+	capture_file.delete
+	print("<b>Password for " + chosen_network.essid + ":</b> " + password)
+	print("<b>Connecting to:</b> " + chosen_network.essid + "...")
+	computer.connect_wifi("wlan0", chosen_network.bssid, chosen_network.essid, password)
+	print
+end function
+
+// --- CLI --------------------------------------
+if params.len == 0 then
+	count = 10
+else if typeof(params[0].to_int) == "number" then
+	count = params[0].to_int
+else
+	print_usage
+	exit 
 end if
 
-print("--- Capturing Packets: " + best_network.essid + " ---")
-acks = 7000 + ((1 - (best_network.power / 100)) * 13000)
-print("Capturing " + acks + " ACKs")
+cwd = current_path
 crypto = include_lib("/lib/crypto.so")
-crypto.airmon("start", "wlan0")
-crypto.aireplay(best_network.bssid, best_network.essid, acks)
-print()
+if not crypto then crypto = include_lib(cwd + "/crypto.so")
+if not crypto then 
+	exit("<color=#FF0000>Error: Can't find crypto.so library in the /lib path or the current folder</color>")
+end if
 
-print("--- Password ---")
-capture_file = computer.File(cwd + "/file.cap")
-password = crypto.aircrack(capture_file.path)
-capture_file.delete
-print("Password for " + best_network.essid + ": " + password)
-print()
-
-print("Connecting to: " + best_network.essid)
-computer.connect_wifi("wlan0", best_network.bssid, best_network.essid, password)
-print()
+chosen_network = select_wifi(count)
+hack_wifi(chosen_network, crypto)
