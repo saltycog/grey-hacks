@@ -1,0 +1,49 @@
+//Command: ssh
+if params.len == 0 or params[0] == "-h" or params[0] == "--help" then
+	print("<b>Usage: ssh [user:pass@]ip[:port]</b>")
+	exit()
+end if
+
+user = null
+password = null
+ip = null
+port = 22
+
+connection_tokens = params[0].split("@")
+
+// User, pass, ip, and port parsing
+if connection_tokens.len > 1 then
+	user_tokens = connection_tokens[0].split(":")
+	address_tokens = connection_tokens[1].split(":")
+	
+	// User/pass parsing
+	user = user_tokens[0]
+	if user_tokens.len > 1 then password = user_tokens[1]
+
+	// IP/port parsing
+	ip = address_tokens[0]
+	if address_tokens.len > 1 then port = address_tokens[1].to_int
+
+// No user/password, just parse ip/port
+else 
+	address_tokens = connection_tokens[0].split(":")
+	ip = address_tokens[0]
+	if address_tokens.len > 1 then port = address_tokens[1].to_int
+end if
+
+// Prompt for user?
+if user == null then user = user_input("login as: ")
+
+// Prompt for password?
+if password == null then password = user_input("password: ", true)
+
+// params is a list of strings, so you have to convert it to integer, which is what connect_service accepts.
+print("Connecting...")
+
+shell = get_shell.connect_service(ip, port, user, password, "ssh")
+if typeof(shell) == "string" then exit(shell)
+if shell then 
+    shell.start_terminal
+else 
+    print("Connection failed")
+end if

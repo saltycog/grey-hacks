@@ -1,0 +1,189 @@
+computer = get_shell.host_computer
+
+print_header = function(label = null, divider_length = 55)
+	divider = "-" * divider_length	
+	print("\n<b>" + divider + "</b>")
+	if label != null then print("<b>" + label + "</b>")
+end function
+
+confirmed = function(choice, char = "y")
+	if choice.lower.indexOf(char) > -1 then return true
+end function
+
+exit_prompt = function()
+	choice = user_input("<b>Exit exploit scan?</b> ")
+	if confirmed(choice) then exit()
+end function
+
+// --- Exploit ---------------------------------------
+Exploit = {}
+Exploit.raw_exploit = null
+Exploit.memory_address = null
+Exploit.overflow = null
+Exploit.user = null
+Exploit.handler = null
+Exploit.details = null
+
+Exploit.init = function(raw_exploit)
+	overflow_lines = raw_exploit.split("\n")
+	overflow_raw = overflow_lines[0]
+	details = overflow_lines[1:]
+
+	overflow = overflow_raw.matches("(?<=\<b\>)(.*)(?=\</b\>)").values
+	
+	exploit = new Exploit
+	exploit.raw_exploit = raw
+	exploit.memory_address = memory_address
+	exploit.overflow = overflow
+	exploit.user = user
+	exploit.handler = handler
+	exploit.details = details
+end function
+
+Exploit.execute = function()
+	
+end function
+
+// --- ExploitCollection -----------------------------
+ExploitCollection = {}
+ExploitCollection.exploits = null
+
+ExploitCollection.init = function(scan)
+	index = 0
+	exploits = []
+	for memory_address in scan
+		exploit_raw =  metaxploit.scan_address(metalib, memory_address)
+		exploit = ExploitCollection.init(memory_address, exploit_raw)
+		exploits.push(exploit)
+		print exploit_raw
+	end for
+
+
+	exploits = exploits.replace("decompiling source...\nsearching unsecure values...\n","")
+	exploits = exploits.split("\n\n")
+
+	new_exploit_collection = new ExploitCollection
+	new_exploit_collection.exploits = exploits
+		
+	return new_exploit_collection
+end function
+
+// --- Helpers ---------------------------------------
+try_get_passwd = function(remote_computer)
+	remote_passwd = remote_computer.File("/etc/passwd")
+	if remote_passwd != null and remote_passwd.has_permission("r") then
+		choice = user_input("<b>Found passwd file. Download?</b> ")
+		if confirmed(choice) then
+			local_path = current_path
+			local_filename = "passwd_" + remote_computer.get_name
+			local_passwd = computer.File(local_path + "/" + local_filename)
+			if local_passwd == null then 
+				computer.touch(local_path, local_filename)
+				local_passwd = computer.File(local_path + "/" + local_filename)
+			end if
+			local_passwd.set_content(remote_passwd.get_content)
+			print("<b>Downloaded to: " + local_path + "/" + local_filename)
+			return true
+		else
+			return false
+		end if
+	end if
+	return false
+end function
+
+process_result = function(result)
+	if result != null then
+		type = typeof(result)
+		
+		// TODO: file, number (change password?)
+
+		// Got terminal!
+		if type == "shell" then 
+			choice = user_input("<b>Obtained shell. Access?</b> ")
+			if confirmed(choice) then
+				print_header()
+				result.start_terminal
+			end if
+			return true
+		end if
+
+		// Got passwd maybe?
+		if type == "computer" then
+			if try_get_passwd(result) then
+				exit_prompt
+			end if
+			return true
+		end if
+
+		if type == "file" then
+			// Delete router rules
+			if result.name == "sys" and result.is_folder then
+				files = result.get_files
+				for file in files
+					if file.name == "network.cfg" then
+						//choice = user_input("<b>Found network config. Delete rules?</b> ")
+						//if confirmed(choice) then
+						//	file.delete
+						//	exit_prompt
+						//	return true
+						//end if
+					end if
+				end for
+				return true
+			end if
+
+			// TODO: boot
+			// TODO: bin
+			
+			print("[ <color=#FF0000><b>No actions know yet for found file:</color> " + result.name + "</b> ]")
+			return false
+		end if
+
+		// Number: Firewall disabled
+		// Number: Change password
+
+		print("[ <color=#FF0000><b>No actions yet for attack type:</color> " + type + "</b> ]")
+		return false
+	end if
+end function
+
+// Parameters
+if params.len != 1 or params[0] == "-h" or params[0] == "--help" then 
+	exit("<b>Usage: " + program_path.split("/")[-1] + " [ip_address] [port]</b>")
+end if
+
+tokens = params[0].split(":")
+address = tokens[0]
+port = tokens[1].to_int
+
+// metaxploit.so
+metaxploit = include_lib("/lib/metaxploit.so")
+if not metaxploit then metaxploit = include_lib(current_path + "/metaxploit.so")
+if not metaxploit then 
+	exit("<color=#FF0000>Error: Can't find metaxploit library in the /lib path or the current folder</color>")
+end if
+
+net_session = metaxploit.net_use(address, port)
+if not net_session then 
+	exit("<color=#FF0000>Error: Unable to connect to net session.</color>")
+end if
+
+metalib = net_session.dump_lib
+
+print_header("<color=#00FF00>SCANNING:</color> " + metalib.lib_name + " v" + metalib.version)
+scan = metaxploit.scan(metalib)
+ExploitCollection.init(scan)
+exit
+
+index = 0
+for exploit in exploits
+	subindex = 0
+	for overflow in exploit.overflows
+		print_header("<color=#FFFF00>ATTACK:</color> " + exploit.memory_address + " -> " + overflow)
+		process_result(metalib.overflow(exploit.memory_address, overflow))
+		subindex = subindex + 1
+	end for
+	index = index + 1
+end for
+
+print

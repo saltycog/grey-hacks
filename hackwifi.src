@@ -1,0 +1,63 @@
+Network = {}
+Network.bssid = ""
+Network.power = 0
+Network.essid = ""
+Network.parse = function(net_string)
+	net_parts = net_string.split(" ")
+	new_network = new Network
+	new_network.bssid = net_parts[0]
+	new_network.power = net_parts[1][:-1].to_int
+	new_network.essid = net_parts[2]
+	return new_network
+end function
+
+computer = get_shell.host_computer
+networks = computer.wifi_networks("wlan0")
+cwd = current_path
+
+print()
+print("--- Top 10 Wifi Networks ---")
+best_network = new Network
+sorted_networks = []
+i = 0
+for net in networks
+	current_network = Network.parse(net)
+	sorted_networks.push(current_network)
+	if current_network.power > best_network.power then
+		best_network = current_network
+	end if
+	i = i + 1
+end for
+
+i = 0
+sorted_networks.sort("power")
+sorted_networks.reverse()
+while i < 10
+	net = sorted_networks[i]
+	print("<b>[" + i + "]</b> " + net.essid + ": " + net.power + "%")
+	i = i + 1
+end while
+
+index = user_input("Choose a network: ")
+if index != "" then 
+	best_network = sorted_networks[index.to_int]
+end if
+
+print("--- Capturing Packets: " + best_network.essid + " ---")
+acks = 7000 + ((1 - (best_network.power / 100)) * 13000)
+print("Capturing " + acks + " ACKs")
+crypto = include_lib("/lib/crypto.so")
+crypto.airmon("start", "wlan0")
+crypto.aireplay(best_network.bssid, best_network.essid, acks)
+print()
+
+print("--- Password ---")
+capture_file = computer.File(cwd + "/file.cap")
+password = crypto.aircrack(capture_file.path)
+capture_file.delete
+print("Password for " + best_network.essid + ": " + password)
+print()
+
+print("Connecting to: " + best_network.essid)
+computer.connect_wifi("wlan0", best_network.bssid, best_network.essid, password)
+print()

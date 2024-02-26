@@ -1,0 +1,40 @@
+// command: chmod (with added numerical format support)
+if params.len < 2 or (params.len == 3 and params[0] != "-R") then 
+    exit("<b>Usage: chmod (opt:-R) [u,g,o+wrx or ###] [path file/folder]</b>")
+end if
+
+permissions = params[0]
+pathFile = params[1]
+isRecursive = 0
+
+if params.len == 3 then
+    permissions = params[1]
+	pathFile = params[2]
+	isRecursive = 1
+end if
+
+file = get_shell.host_computer.File(pathFile)
+if file == null then exit("chmod: can't find " + pathFile)
+if file.has_permission("w") != true then exit("permission denied")
+
+// Numerical permissions format
+if typeof(permissions.to_int) == "number" then
+    permission_map = { 0: "", 1: "x", 2: "w", 3: "wx", 4: "r", 5: "rx", 6: "rw", 7: "rwx" }
+    
+    u = permission_map[permissions[0].to_int]
+    file.chmod("u-rwx", isRecursive)
+    file.chmod("u+" + u, isRecursive)
+    
+    g = permission_map[permissions[1].to_int]
+    file.chmod("g-rwx", isRecursive)
+    file.chmod("g+" + g, isRecursive)    
+
+    o = permission_map[permissions[2].to_int]
+    file.chmod("o-rwx", isRecursive)
+    file.chmod("o+" + o, isRecursive)
+
+// Regular permissions format
+else
+    output = file.chmod(permissions, isRecursive)
+    if output then print(output)
+end if
