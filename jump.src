@@ -1,20 +1,6 @@
-newline = char(10)
+// command: jump
+NEWLINE = char(10)
 
-// Print usage details
-print_usage = function()
-	print("<b>Usage: jump (-list/-alias/-setup/-teardown) [alias_name]</b>")
-	print("Example (ssh using alias): jump jumpbox_alias")
-	print("Example (list all aliases): jump -list")
-	print("Example (create new alias): jump -alias jumpbox_alias")
-	print("Example (setup jumpbox): jump -setup jumpbox_alias")
-	print("Example (tear down jumpbox): jump -teardown jumpbox_alias")
-end function
-
-// Home home dir of active user
-get_user_home = function()
-	if active_user == "root" then return "/root"
-	return "/home/" + active_user
-end function
 
 // --- JumpBox Class----------------------------------
 JumpBox = {}
@@ -24,10 +10,9 @@ JumpBox.user = null
 JumpBox.ip = null
 JumpBox.port = -1
 
-// Create jumpbox object from alias
-JumpBox.init = function(alias)
+JumpBox.New = function(alias)
 	jumplist = get_jumplist_file.get_content
-	entries = jumplist.split(newline)
+	entries = jumplist.split(NEWLINE)
 	for entry in entries
 		entry_tokens = entry.split("=")
 		if entry_tokens.len != 2 then continue
@@ -36,12 +21,13 @@ JumpBox.init = function(alias)
 		if entry_alias.lower == alias.lower then
 			value_tokens = address.split("@")
 			address_tokens = value_tokens[1].split(":")
-			jumpbox = new JumpBox
-			jumpbox.alias = alias
-			jumpbox.user = value_tokens[0]
-			jumpbox.ip = address_tokens[0]
-			jumpbox.port = address_tokens[1].to_int
-			return jumpbox
+			
+			self = new JumpBox
+			self.alias = alias
+			self.user = value_tokens[0]
+			self.ip = address_tokens[0]
+			self.port = address_tokens[1].to_int
+			return self
 		end if
 	end for
 	print("<b><color=#FF0000>No such alias:</b> " + alias + "</color>")
@@ -88,7 +74,23 @@ JumpBox.clear_logs = function(shell)
 	syslog.move("/var", "system.log")
 end function
 
+
 // --- Helpers ---------------------------------------
+// Print usage details
+print_usage = function()
+	print("<b>Usage: jump (-list/-alias/-setup/-teardown) [alias_name]</b>")
+	print("Example (ssh using alias): jump jumpbox_alias")
+	print("Example (list all aliases): jump -list")
+	print("Example (create new alias): jump -alias jumpbox_alias")
+	print("Example (setup jumpbox): jump -setup jumpbox_alias")
+	print("Example (tear down jumpbox): jump -teardown jumpbox_alias")
+end function
+
+// Home home dir of active user
+get_user_home = function()
+	if active_user == "root" then return "/root"
+	return "/home/" + active_user
+end function
 
 // Get saved config
 get_jumplist_file = function()
@@ -115,15 +117,14 @@ create_alias = function(alias)
 	if jumplist.len == 0 then 
 		jumplist = alias + "=" + user + "@" + ip + ":" + port
 	else
-		jumplist = jumplist + newline + alias + "=" + user + "@" + ip + ":" + port
+		jumplist = jumplist + NEWLINE + alias + "=" + user + "@" + ip + ":" + port
 	end if
 	jumplist_file.set_content jumplist
 	exit("<b>New alias added to jumplist:</b> " + alias)
 end function
 
-// --- CLI -------------------------------------------
 
-// Parameter validation
+// --- MAIN ------------------------------------------
 if params.len == 0 or params[0] == "-h" or params[0] == "--help" then 
 	print_usage
 	exit
@@ -145,20 +146,20 @@ if params[0] == "-alias" then
 // Sync files to jump target
 else if params[0] == "-sync" then 
 	alias = params[1]
-	jumpbox = JumpBox.init(alias)
+	jumpbox = JumpBox.New(alias)
 	jumpbox.sync
 	exit
 
 // Clean up jump target
 else if params[0] == "-teardown" then 
 	alias = params[1]
-	jumpbox = JumpBox.init(alias)
+	jumpbox = JumpBox.New(alias)
 	jumpbox.teardown
 	exit
 
 else
 	alias = params[0]
-	jumpbox = JumpBox.init(alias)
+	jumpbox = JumpBox.New(alias)
 	jumpbox.jump
 	exit
 end if

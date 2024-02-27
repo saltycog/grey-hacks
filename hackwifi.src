@@ -3,19 +3,20 @@ print_usage = function()
 	print("<b>Usage: hackwifi (opt: number_of_listings=10)</b>")
 end function
 
-// --- Network ----------------------------------
+// --- Network Class ---------------------------------
 Network = {}
 Network.bssid = ""
 Network.power = 0
 Network.essid = ""
 
-Network.init = function(net_string)
+Network.New = function(net_string)
 	net_parts = net_string.split(" ")
-	new_network = new Network
-	new_network.bssid = net_parts[0]
-	new_network.power = net_parts[1][:-1].to_int
-	new_network.essid = net_parts[2]
-	return new_network
+	
+	self = new Network
+	self.bssid = net_parts[0]
+	self.power = net_parts[1][:-1].to_int
+	self.essid = net_parts[2]
+	return self
 end function
 
 // --- Helpers ---------------------------------------
@@ -32,7 +33,7 @@ select_wifi = function(count)
 	sorted_networks = []
 	i = 0
 	for net in networks
-		current_network = Network.init(net)
+		current_network = Network.New(net)
 		sorted_networks.push(current_network)
 		if current_network.power > chosen_network.power then
 			chosen_network = current_network
