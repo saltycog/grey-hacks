@@ -137,7 +137,8 @@ end function
 
 AttackTree.display_menu = function()
 	clear_screen
-	print("ID   USER       HANDLER              REQUIREMENTS")
+	print("-" * 55)
+	print(" <b>ID  USER      HANDLER            REQUIREMENTS</b>")
 	print("-" * 55)
 	
 	i = 0
@@ -152,12 +153,11 @@ AttackTree.display_menu = function()
 			handler = typeof(attack.handler)
 		end if
 		line = " " * 55
-		line = line.insert(0, "<b>[" + i + "]</b>")[:55]
-		line = line.insert(12, attack.user)[:55]
-		line = line.insert(23, handler)[:55]
-		line = line.insert(44, requirements)
-		print(line.trim)
-		//print("[" + i + "]" + (TAB*3) + attack.handler + (TAB*3) + attack.user)
+		line = line.insert(1, "<b>[" + i + "]</b>")
+		line = line.insert(13, attack.user)
+		line = line.insert(24, handler)
+		line = line.insert(45, requirements)
+		print(line)
 		i = i + 1
 	end for
 end function
