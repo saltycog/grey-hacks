@@ -4,6 +4,12 @@
 
 TAB = char(9)
 
+ip = null
+port = null
+verbose = false
+
+metaxploit = null
+
 // --- Attack Class ----------------------------------
 Attack = {}
 Attack.memory_address = null
@@ -67,17 +73,20 @@ end function
 
 // Connect to attack target and start a terminal session.
 // Clears logs in advance if root obtained.
-Attack.execute_shell_terminal = function(remote_shell)
+Attack.execute_shell_terminal = function(remote_shell = null)
+	if remote_shell == null then remote_shell = self.handler
 	print_header()
 	if self.user == "root" then 
-		print("Cleared target logs")
-		self.clear_logs(remote_shell)
+		print("Corrupted target logs")
+		self.corrupt_logs(remote_shell)
 	end if
+	print("Connecting...")
 	remote_shell.start_terminal
 end function
 
 // Attempt to download passwd file from attack target.
-Attack.execute_try_get_passwd = function(remote_computer)
+Attack.execute_try_get_passwd = function(remote_computer = null)
+	if remote_computer == null then remote_computer = self.handler
 	remote_passwd = remote_computer.File("/etc/passwd")
 	if remote_passwd != null and remote_passwd.has_permission("r") then
 		local_path = current_path
@@ -95,7 +104,8 @@ Attack.execute_try_get_passwd = function(remote_computer)
 end function
 
 // "Corrupt" logs on attack target.
-Attack.clear_logs = function(remote_shell)
+Attack.corrupt_logs = function(remote_shell = null)
+	if remote_shell == null then remote_shell = self.handler
 	remote_computer = remote_shell.host_computer
 	syslog = remote_computer.File("/var/system.log")
 	syslog.delete
@@ -108,6 +118,20 @@ Attack.clear_logs = function(remote_shell)
 	syslog.set_owner("root")
 	syslog.set_group("root")
 	syslog.move("/var", "system.log")
+end function
+
+Attack.display_attack_options = function()
+	print_header
+	if typeof(self.handler) == "shell" then
+		self.display_shell_options
+	end if
+end function
+
+Attack.display_shell_options = function()
+	should_enter = confirmation_prompt("<b>Enter shell as " + self.user + "?</b> ")
+	if should_enter then 
+		self.execute_shell_terminal
+	end if
 end function
 
 
@@ -135,15 +159,22 @@ AttackTree.New = function(scan)
 	return self
 end function
 
-AttackTree.display_menu = function()
-	clear_screen
+AttackTree.display_attacks = function()
+	reqs_label = ""
+	if globals.verbose then reqs_label = "REQUIREMENTS"
+	if globals.verbose != true then clear_screen
+
 	print("-" * 55)
-	print(" <b>ID  USER      HANDLER            REQUIREMENTS</b>")
+	print(" <b>ID   USER      HANDLER            " + reqs_label + "</b>")
 	print("-" * 55)
 	
 	i = 0
 	for attack in self.attacks
-		
+		if attack.handler == null and globals.verbose != true then 
+			i = i + 1
+			continue
+		end if
+
 		if attack.user == "root" then
 			color = "<color=#00FF00>"
 		else if attack.user == "guest" then
@@ -175,6 +206,14 @@ AttackTree.display_menu = function()
 		print(line)
 		i = i + 1
 	end for
+	print
+	
+	selection = user_input("<b>Select attack:</b> ").to_int
+	if selection < self.attacks.len then 
+		self.attacks[selection].display_attack_options
+	else
+
+	end if
 end function
 
 
@@ -187,22 +226,29 @@ print_header = function(label = null, divider_length = 55)
 	if label != null then print("<b>" + label + "</b>")
 end function
 
-confirmed = function(choice, char = "y")
-	if choice.lower.indexOf(char) > -1 then return true
+// Prompt user for input.
+// prompt: Prompt to display.
+// char: First character of response that will return true (default 'y')
+confirmation_prompt = function(prompt, char = "y")
+	choice = user_input(prompt)
+	if choice.lower.indexOf(char) == 0 then return true
 end function
 
 exit_prompt = function()
 	choice = user_input("<b>Exit simp?</b> ")
-	if confirmed(choice) then exit()
+	if confirmation_prompt(choice) then exit()
 end function
 
 get_metaxploit = function()
-	metaxploit = include_lib("/lib/metaxploit.so")
-	if not metaxploit then metaxploit = include_lib(current_path + "/metaxploit.so")
-	if not metaxploit then 
-		exit("<color=#FF0000>Error: Can't find metaxploit library in the /lib path or the current folder</color>")
+	if globals.metaxploit == null then
+		metaxploit = include_lib("/lib/metaxploit.so")
+		if not metaxploit then metaxploit = include_lib(current_path + "/metaxploit.so")
+		if not metaxploit then 
+			exit("<color=#FF0000>Error: Can't find metaxploit library in the /lib path or the current folder</color>")
+		end if
+		globals.metaxploit = metaxploit
 	end if
-	return metaxploit
+	return globals.metaxploit
 end function
 
 get_cached_scan = function(cached_scan_filename)
@@ -261,17 +307,19 @@ end function
 
 
 // --- MAIN ------------------------------------------
-if params.len != 1 or params[0] == "-h" or params[0] == "--help" then 
-	exit("<b>Usage: simp [ip_address]:[port]</b>")
+if params.len == 0 or params.len > 2 or params[0] == "-h" or params[0] == "--help" then 
+	exit("<b>Usage: simp (-v) [ip_address]:[port]</b>")
 end if
 
-tokens = params[0].split(":")
-address = tokens[0]
-port = tokens[1].to_int
+if params.indexOf("-v") != null or params.indexOf("--verbose") then verbose = true
+
+address_tokens = params[params.len - 1].split(":")
+ip = address_tokens[0]
+port = address_tokens[1].to_int
 
 // Load library
 metaxploit = get_metaxploit
-net_session = metaxploit.net_use(address, port)
+net_session = metaxploit.net_use(ip, port)
 if not net_session then 
 	exit("<color=#FF0000>Error: Unable to connect to net session.</color>")
 end if
@@ -294,4 +342,4 @@ else
 end if
 
 attack_tree = AttackTree.New(scan)
-attack_tree.display_menu
+attack_tree.display_attacks
