@@ -143,20 +143,35 @@ AttackTree.display_menu = function()
 	
 	i = 0
 	for attack in self.attacks
-		requirements = "<color=#00FF00>MET</color>"
+		
+		if attack.user == "root" then
+			color = "<color=#00FF00>"
+		else if attack.user == "guest" then
+			color = "<color=#FFFFFF>"
+		else if attack.user == "???" then
+			color = "<color=#303030>"
+		else
+			color = "<color=#FFFF00>"
+		end if
+		
+		requirements = ""
 		if attack.handler == null then 
 			handler = "???"
-			requirements = "<color=#FF0000>NEED (x" + attack.requirements.len + ")</color>"
+			requirements = "NEED (x" + attack.requirements.len + ")"
 		else if typeof(attack.handler) == "file" then
 			handler = typeof(attack.handler) + ": " + attack.handler.path
+		else if typeof(attack.handler) == "number" then
+			handler = "#" + attack.handler
 		else
 			handler = typeof(attack.handler)
 		end if
-		line = " " * 55
-		line = line.insert(1, "<b>[" + i + "]</b>")
-		line = line.insert(13, attack.user)
-		line = line.insert(24, handler)
-		line = line.insert(45, requirements)
+		line = " " * 70
+		line = line.insert(0, color)
+		line = line.insert(16, "<b>[" + i + "]</b>")
+		line = line.insert(28, attack.user)
+		line = line.insert(39, handler)
+		line = line.insert(60, requirements)
+		line = line.insert(70, "</color>")
 		print(line)
 		i = i + 1
 	end for
@@ -205,7 +220,42 @@ get_cached_scan = function(cached_scan_filename)
 	return cached_scan_file
 end function
 
+crawl_to_dir = function(dir, file_handler)
+	file = file_handler
+	while file.path != "/"
+		file = file.parent
+	end while
+	for folder in file.get_folders
+		if folder.path == dir then return folder
+	end for
+	return null
+end function
+
 infer_user = function(handler)
+	if typeof(handler) == "shell" or typeof(handler) == "ftpshell" then
+		handler = handler.host_computer.File("/")
+	end if
+
+	if typeof(handler) == "computer" then
+		handler = handler.File("/")
+	end if
+
+	if typeof(handler) == "file" then
+		root_dir = crawl_to_dir("/root", handler)
+		if root_dir != null and root_dir.has_permission("w") then return "root"
+		home_dir = crawl_to_dir("/home", handler)
+		if home_dir != null then
+			for user in home_dir.get_folders
+				if user.name == "guest" then 
+					guest = user
+					continue
+				end if
+				if user.has_permission("w") then return user.name
+			end for
+			if guest.has_permission("w") then return "guest"
+		end if
+	end if
+	
 	return "???"
 end function
 
