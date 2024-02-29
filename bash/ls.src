@@ -1,30 +1,33 @@
 //command: ls
 
-computer = get_shell.host_computer
-folderPath = current_path
-
-showDetails = false
-showHide = false
-humanReadable = false
+get_params_before_pipe = function()
+    return params.join(" ").split("\|")[0].split(" ")
+end function
 
 get_piped_program = function()
     pipe_tokens = params.join(" ").split("\|")
-    if pipe_tokens.len > 1 then return pipe_tokens[1:].join("|").trim
+    if pipe_tokens.len > 1 then 
+        program = pipe_tokens[1:].join("|").trim
+        program_path = program
+        if program_path.indexOf("/") != 0 then program_path = current_path + "/" + program
+        computer = get_shell.host_computer
+        program_file = computer.File(program_path)
+        if program_file == null then program_path = "/bin/" + program
+        program_file = computer.File(program_path)
+        if program_file != null then return program_path
+    end if
     return null
 end function
 
-if params.len > 0 then
-    options = params.join(" ").split("\|")[0].split(" ")
-    for option in options
-        if option.indexOf("-") != null then
-            if option.indexOf("l") != null then showDetails = true
-            if option.indexOf("h") != null then humanReadable = true
-            if option.indexOf("a") != null then showHide = true
-            continue
-        end if
-        if option != "" then folderPath = option
-    end for
-end if
+launch_piped_program = function(args)
+    args = args.replace("\\n", char(10))
+    pipe_program = get_piped_program
+    if pipe_program != null then 
+        launch(get_shell, pipe_program, args)
+        return true
+    end if
+    return false
+end function
 
 get_human_readable_size = function(size)
     TERABYTE = 1099511627776
@@ -39,6 +42,27 @@ get_human_readable_size = function(size)
     if size >= KILOBYTE then return round(size / KILOBYTE, 1) + "K"
     return size
 end function
+
+// --- MAIN ------------------------------------------
+computer = get_shell.host_computer
+folderPath = current_path
+
+showDetails = false
+showHide = false
+humanReadable = false
+
+if params.len > 0 then
+    options = get_params_before_pipe
+    for option in options
+        if option.indexOf("-") != null then
+            if option.indexOf("l") != null then showDetails = true
+            if option.indexOf("h") != null then humanReadable = true
+            if option.indexOf("a") != null then showHide = true
+            continue
+        end if
+        if option != "" then folderPath = option
+    end for
+end if
 
 folder = computer.File(folderPath)
 if folder == null then
@@ -70,12 +94,7 @@ else
             end if
         end for
         
-        print(format_columns(output))
-
-        pipe_program = get_piped_program
-        if pipe_program != null then 
-            launch(get_shell, pipe_program, output.replace("\\n", char(10)))
-        end if
+        if not launch_piped_program(output) then print(format_columns(output))
     end if
 end if
 

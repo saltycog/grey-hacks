@@ -1,4 +1,4 @@
-// command: echo
+//command: cat
 
 get_params_before_pipe = function()
     return params.join(" ").split("\|")[0].split(" ")
@@ -30,9 +30,16 @@ launch_piped_program = function(args)
 end function
 
 // --- MAIN ------------------------------------------
+options = get_params_before_pipe
+if options.len == 0 or options[0] == "-h" or options[0] == "--help" then exit(command_info("cat_usage"))
 
-output = get_params_before_pipe.join(" ").replace("""", "")
+pathFile = options[0]
+file = get_shell.host_computer.File(pathFile)
 
-if not launch_piped_program(output) then
-    print(output)
-end if
+if file == null then exit("cat: file not found: " + pathFile)
+if file.is_binary then exit("cat: can't open " + file.path + ". Binary file")	
+if not file.has_permission("r") then exit("cat: permission denied")
+
+output = file.get_content
+
+if not launch_piped_program(output) then print(output)
