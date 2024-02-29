@@ -1,0 +1,81 @@
+//command: ls
+
+computer = get_shell.host_computer
+folderPath = current_path
+
+showDetails = false
+showHide = false
+humanReadable = false
+
+get_piped_program = function()
+    pipe_tokens = params.join(" ").split("\|")
+    if pipe_tokens.len > 1 then return pipe_tokens[1:].join("|").trim
+    return null
+end function
+
+if params.len > 0 then
+    options = params.join(" ").split("\|")[0].split(" ")
+    for option in options
+        if option.indexOf("-") != null then
+            if option.indexOf("l") != null then showDetails = true
+            if option.indexOf("h") != null then humanReadable = true
+            if option.indexOf("a") != null then showHide = true
+            continue
+        end if
+        if option != "" then folderPath = option
+    end for
+end if
+
+get_human_readable_size = function(size)
+    TERABYTE = 1099511627776
+    GIGABYTE = 1073741824
+    MEGABYTE = 1048576
+    KILOBYTE = 1024
+
+    size = size.to_int
+    if size >= TERABYTE then return round(size / TERABYTE, 1) + "T"
+    if size >= GIGABYTE then return round(size / GIGABYTE, 1) + "G"
+    if size >= MEGABYTE then return round(size / MEGABYTE, 1) + "M"
+    if size >= KILOBYTE then return round(size / KILOBYTE, 1) + "K"
+    return size
+end function
+
+folder = computer.File(folderPath)
+if folder == null then
+    print("ls: No such file or directory")
+else
+    if not folder.has_permission("r") then
+        print("ls: permission denied")
+
+    else
+        subFiles = folder.get_folders + folder.get_files
+        output = ""
+        for subFile in subFiles
+            nameFile = subFile.name
+            permission = subFile.permissions
+            owner = subFile.owner
+            size = subFile.size
+            group = subFile.group
+
+            if showHide or nameFile.indexOf(".") != 0 then
+                if output.len > 0 then 
+                    output = output + "\n"
+                end if
+                if showDetails then
+                    if humanReadable then size = get_human_readable_size(size)
+                    output = output + permission + " " + owner + " " + group + " " + size + " 00:00 " + nameFile
+                else
+                    output = output + nameFile
+                end if
+            end if
+        end for
+        
+        print(format_columns(output))
+
+        pipe_program = get_piped_program
+        if pipe_program != null then 
+            launch(get_shell, pipe_program, output.replace("\\n", char(10)))
+        end if
+    end if
+end if
+

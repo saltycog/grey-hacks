@@ -1,0 +1,14 @@
+get_piped_program = function()
+    pipe_tokens = params.join(" ").split("\|")
+    if pipe_tokens.len > 1 then return pipe_tokens[1:].join("|").trim
+    return null
+end function
+
+output = params.join(" ").split("\|")[0].replace("""", "")
+
+pipe_program = get_piped_program
+if pipe_program != null then 
+    launch(get_shell, pipe_program, output.replace("\n", ""))
+else
+    print(output)
+end if
