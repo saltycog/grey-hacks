@@ -2,6 +2,8 @@
 // Usage: simp [ip_address]:[port]
 // Scans and executes exploits against a target
 
+
+// --- Globals ---------------------------------------
 TAB = char(9)
 
 ip = null
@@ -9,6 +11,8 @@ port = null
 verbose = false
 
 metaxploit = null
+crypto = null
+
 
 // --- Attack Class ----------------------------------
 Attack = {}
@@ -23,7 +27,7 @@ Attack.New = function(memory_address, attack_raw)
 	buffer_overflow_raw = attack_lines[0]
 	requirements = attack_lines[1:]
 	buffer_overflow = buffer_overflow_raw.matches("(?<=\<b\>)(.*)(?=\</b\>)").values[0]
-	handler = metalib.overflow(memory_address, buffer_overflow)
+	handler = metalib.overflow(memory_address, buffer_overflow, "password")
 	user = infer_user(handler)
 
 	self = new Attack
@@ -71,18 +75,7 @@ Attack.execute = function()
 	exit
 end function
 
-// Connect to attack target and start a terminal session.
-// Clears logs in advance if root obtained.
-Attack.execute_shell_terminal = function(remote_shell = null)
-	if remote_shell == null then remote_shell = self.handler
-	print_header()
-	if self.user == "root" then 
-		print("Corrupted target logs")
-		self.corrupt_logs(remote_shell)
-	end if
-	print("Connecting...")
-	remote_shell.start_terminal
-end function
+
 
 // Attempt to download passwd file from attack target.
 Attack.execute_try_get_passwd = function(remote_computer = null)
@@ -104,9 +97,10 @@ Attack.execute_try_get_passwd = function(remote_computer = null)
 end function
 
 // "Corrupt" logs on attack target.
-Attack.corrupt_logs = function(remote_shell = null)
-	if remote_shell == null then remote_shell = self.handler
-	remote_computer = remote_shell.host_computer
+Attack.corrupt_logs = function(handler = null)
+	if handler == null then handler = self.handler
+	if typeof(handler) == "shell" then remote_computer = remote_shell.host_computer
+	if typeof(handler) == "computer" then remote_computer = handler
 	syslog = remote_computer.File("/var/system.log")
 	syslog.delete
 	remote_computer.touch("home/guest", "system.log")
@@ -121,16 +115,64 @@ Attack.corrupt_logs = function(remote_shell = null)
 end function
 
 Attack.display_attack_options = function()
-	print_header
-	if typeof(self.handler) == "shell" then
-		self.display_shell_options
-	end if
+	print_header("OPTIONS:")
+	handler_type = self.handler
+	if typeof(handler_type) == "shell" then self.display_shell_options
+	if typeof(handler_type) == "computer" then self.display_computer_options
 end function
 
 Attack.display_shell_options = function()
 	should_enter = confirmation_prompt("<b>Enter shell as " + self.user + "?</b> ")
 	if should_enter then 
 		self.execute_shell_terminal
+	end if
+end function
+
+// Connect to attack target and start a terminal session.
+// Clears logs in advance if root obtained.
+Attack.execute_shell_terminal = function(remote_shell = null)
+	if remote_shell == null then remote_shell = self.handler
+	print_header()
+	if self.user == "root" then 
+		print("Corrupted target logs")
+		self.corrupt_logs(remote_shell)
+	end if
+	print("Connecting...")
+	remote_shell.start_terminal
+end function
+
+Attack.display_computer_options = function()
+	
+	print(" <b>[0]</b> Try to obtain /etc/passwd")
+	print
+	choice = user_input("<b>Select options:<b> ")
+	if choice == "0" then self.obtain_passwd_file
+end function
+
+Attack.obtain_passwd_file = function(remote_computer = null)
+	if self.user == "root" then self.corrupt_logs
+	if remote_computer == null then remote_computer = self.handler
+	remote_passwd = remote_computer.File("/etc/passwd")
+	if remote_passwd != null and remote_passwd.has_permission("r") then
+		passwd_contents = remote_passwd.get_content
+		print
+		print("<b>passwd contents:</b>")
+		passwd_lines = passwd_contents.split("\n")
+		i = 0
+		for line in passwd_lines
+			if line.trim == "" then continue
+			print(" <b>[" + i + "]</b> " + line)
+			i = i + 1
+		end for
+		print
+		choice = user_input("<b>Decipher which line?</b> ").to_int
+		if choice != null then
+			line_tokens = passwd_lines[choice].split(":")
+			user = line_tokens[0]
+			password = crack(line_tokens[1])
+			print("<b>User:</b> " + user)
+			print("<b>Password:</b> " + password)
+		end if
 	end if
 end function
 
@@ -142,15 +184,19 @@ AttackTree.attacks = null
 AttackTree.New = function(scan)
 	index = 0
 	attacks = []
+	i = 0
 	for memory_address in scan
 		attacks_raw =  metaxploit.scan_address(metalib, memory_address)
 		attacks_raw = attacks_raw.replace("decompiling source...\nsearching unsecure values...\n","")
 		attacks_raw = attacks_raw.split("\n\n")
 		for attack_raw in attacks_raw
 			if attack_raw != "" then
+				print("<b>[" + i + "]</b>")
 				attack = Attack.New(memory_address, attack_raw)
 				attacks.push(attack)
+				print("<b> - - - </b>")
 			end if
+			i = i + 1
 		end for
 	end for
 
@@ -217,7 +263,7 @@ AttackTree.display_attacks = function()
 end function
 
 
-// --- Helpers ---------------------------------------
+// --- Global Functions ------------------------------
 local_computer = get_shell.host_computer
 
 print_header = function(label = null, divider_length = 55)
@@ -249,6 +295,18 @@ get_metaxploit = function()
 		globals.metaxploit = metaxploit
 	end if
 	return globals.metaxploit
+end function
+
+get_crypto = function()
+	if globals.crypto == null then
+		crypto = include_lib("/lib/crypto.so")
+		if not crypto then crypto = include_lib(current_path + "/crypto.so")
+		if not crypto then 
+			exit("<color=#FF0000>Error: Can't find crypto library in the /lib path or the current folder</color>")
+		end if
+		globals.crypto = crypto
+	end if
+	return globals.crypto
 end function
 
 get_cached_scan = function(cached_scan_filename)
@@ -303,6 +361,65 @@ infer_user = function(handler)
 	end if
 	
 	return "???"
+end function
+
+get_user_home = function()
+	if active_user == "root" then return "/root"
+	return "/home/" + active_user
+end function
+
+get_hashes_file = function()
+	config_dir = get_user_home + "/Config"
+	computer = get_shell.host_computer
+	hashes_file = computer.File(config_dir + "/Hashes.txt")
+	if hashes_file == null then
+		computer.touch(config_dir, "Hashes.txt")
+		hashes_file = computer.File(config_dir + "/Hashes.txt")
+		hashes_file.chmod("o-rwx")
+		hashes_file.chmod("g-rwx")
+		if active_user == "root" then hashes_file.chmod("u-rwx")
+	end if
+    return hashes_file
+end function
+
+get_cached_hash_value = function(hash)
+    hashes_file = get_hashes_file
+    lines = hashes_file.get_content.split("\n")
+    for line in lines
+        line_parts = line.split("=")
+        if line_parts[0] == hash then return line_parts[1]
+    end for
+    return null
+end function
+
+save_hash_to_cache = function(hash, hash_value)
+    hashes_file = get_hashes_file
+    hash_line = hash + "=" + hash_value
+    hashes_file_content = hashes_file.get_content
+    if hashes_file_content != "" then hashes_file_content = hashes_file_content + NEWLINE
+    hashes_file.set_content(hashes_file_content + hash_line)
+end function
+
+get_crypto = function()
+	if globals.crypto == null then
+		crypto = include_lib("/lib/crypto.so")
+		if not crypto then crypto = include_lib(current_path + "/crypto.so")
+		if not crypto then 
+			exit("<color=#FF0000>Error: Can't find crypto library in the /lib path or the current folder</color>")
+		end if
+		globals.crypto = crypto
+	end if
+	return globals.crypto
+end function
+
+crack = function(hash)
+    if hash.indexOf(":") != null then hash = hash.split(":")[1]
+    result = get_cached_hash_value(hash)
+    if result == null then 
+        result = get_crypto.decipher(hash)
+        save_hash_to_cache(hash, result)
+    end if
+    return result
 end function
 
 

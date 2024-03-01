@@ -1,17 +1,20 @@
 //Command: ssh
-if params.len == 0 or params[0] == "-h" or params[0] == "--help" then
-	print("<b>Usage: ssh [user:pass@]ip[:port]</b>")
-	exit()
-end if
 
+// --- Globals ---------------------------------------
 user = null
 password = null
 ip = null
 port = 22
 
-connection_tokens = params[0].split("@")
+
+// --- MAIN ------------------------------------------
+if params.len == 0 or params[0] == "-h" or params[0] == "--help" then
+	print("<b>Usage: ssh [user:pass@]ip[:port]</b>")
+	exit()
+end if
 
 // User, pass, ip, and port parsing
+connection_tokens = params[0].split("@")
 if connection_tokens.len > 1 then
 	user_tokens = connection_tokens[0].split(":")
 	address_tokens = connection_tokens[1].split(":")

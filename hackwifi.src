@@ -1,7 +1,5 @@
-// Print usage details
-print_usage = function()
-	print("<b>Usage: hackwifi (opt: number_of_listings=10)</b>")
-end function
+// command: hackwifi
+
 
 // --- Network Class ---------------------------------
 Network = {}
@@ -19,7 +17,13 @@ Network.New = function(net_string)
 	return self
 end function
 
-// --- Helpers ---------------------------------------
+
+// --- Global Functions ------------------------------
+// Print usage details
+print_usage = function()
+	print("<b>Usage: hackwifi (opt: number_of_listings=10)</b>")
+end function
+
 // Network listings and selection.
 // Returns: Network object
 select_wifi = function(count)
@@ -93,7 +97,8 @@ hack_wifi = function(chosen_network, crypto)
 	print
 end function
 
-// --- CLI --------------------------------------
+
+// --- MAIN ------------------------------------------
 if params.len == 0 then
 	count = 10
 else if typeof(params[0].to_int) == "number" then

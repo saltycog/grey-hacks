@@ -1,0 +1,74 @@
+// command: crack
+
+// --- Globals ---------------------------------------
+NEWLINE = char(10)
+
+crypto = null
+
+// --- Global Functions ------------------------------
+// Home dir of active user
+get_user_home = function()
+	if active_user == "root" then return "/root"
+	return "/home/" + active_user
+end function
+
+// Get hash cache
+get_hashes_file = function()
+	config_dir = get_user_home + "/Config"
+	computer = get_shell.host_computer
+	hashes_file = computer.File(config_dir + "/Hashes.txt")
+	if hashes_file == null then
+		computer.touch(config_dir, "Hashes.txt")
+		hashes_file = computer.File(config_dir + "/Hashes.txt")
+		hashes_file.chmod("o-rwx")
+		hashes_file.chmod("g-rwx")
+		if active_user == "root" then hashes_file.chmod("u-rwx")
+	end if
+    return hashes_file
+end function
+
+get_cached_hash_value = function(hash)
+    hashes_file = get_hashes_file
+    lines = hashes_file.get_content.split("\n")
+    for line in lines
+        line_parts = line.split("=")
+        if line_parts[0] == hash then return line_parts[1]
+    end for
+    return null
+end function
+
+save_hash_to_cache = function(hash, hash_value)
+    hashes_file = get_hashes_file
+    hash_line = hash + "=" + hash_value
+    hashes_file_content = hashes_file.get_content
+    if hashes_file_content != "" then hashes_file_content = hashes_file_content + NEWLINE
+    hashes_file.set_content(hashes_file_content + hash_line)
+end function
+
+
+get_crypto = function()
+	if globals.crypto == null then
+		crypto = include_lib("/lib/crypto.so")
+		if not crypto then crypto = include_lib(current_path + "/crypto.so")
+		if not crypto then 
+			exit("<color=#FF0000>Error: Can't find crypto library in the /lib path or the current folder</color>")
+		end if
+		globals.crypto = crypto
+	end if
+	return globals.crypto
+end function
+
+crack = function(hash)
+    if hash.indexOf(":") != null then hash = hash.split(":")[1]
+    result = get_cached_hash_value(hash)
+    if result == null then 
+        result = get_crypto.decipher(hash)
+        save_hash_to_cache(hash, result)
+    end if
+    return result
+end function
+
+// --- MAIN ------------------------------------------
+hash = params[0]
+
+print("<b>Value:</b> " + crack(hash))

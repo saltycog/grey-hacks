@@ -1,5 +1,6 @@
 //command: cat
 
+// --- Global Functions ------------------------------
 get_params_before_pipe = function()
     return params.join(" ").split("\|")[0].split(" ")
 end function
