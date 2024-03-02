@@ -1,5 +1,13 @@
 //command: ls
 
+// --- Globals ---------------------------------------
+computer = get_shell.host_computer
+folderPath = current_path
+
+showDetails = false
+showHide = false
+humanReadable = false
+
 // --- Global Functions ------------------------------
 get_params_before_pipe = function()
     return params.join(" ").split("\|")[0].split(" ")
@@ -45,13 +53,6 @@ get_human_readable_size = function(size)
 end function
 
 // --- MAIN ------------------------------------------
-computer = get_shell.host_computer
-folderPath = current_path
-
-showDetails = false
-showHide = false
-humanReadable = false
-
 if params.len > 0 then
     options = get_params_before_pipe
     for option in options

@@ -5,6 +5,7 @@
 
 // --- Globals ---------------------------------------
 TAB = char(9)
+NEWLINE = char(10)
 
 ip = null
 port = null
@@ -99,7 +100,7 @@ end function
 // "Corrupt" logs on attack target.
 Attack.corrupt_logs = function(handler = null)
 	if handler == null then handler = self.handler
-	if typeof(handler) == "shell" then remote_computer = remote_shell.host_computer
+	if typeof(handler) == "shell" then remote_computer = handler.host_computer
 	if typeof(handler) == "computer" then remote_computer = handler
 	syslog = remote_computer.File("/var/system.log")
 	syslog.delete
@@ -116,9 +117,30 @@ end function
 
 Attack.display_attack_options = function()
 	print_header("OPTIONS:")
-	handler_type = self.handler
-	if typeof(handler_type) == "shell" then self.display_shell_options
-	if typeof(handler_type) == "computer" then self.display_computer_options
+	handler_type = typeof(self.handler)
+	if handler_type == "shell" then self.display_shell_options
+	if handler_type == "computer" then self.display_computer_options
+	if handler_type == "file" then self.display_file_options
+end function
+
+Attack.display_computer_options = function()
+	print(" <b>[0]</b> Try to obtain /etc/passwd")
+	print
+	choice = user_input("<b>Select option:<b> ")
+	if choice == "0" then 
+		passwd_file = obtain_passwd_file(self.handler)
+		if passwd_file != null then crack_file(passwd_file)
+	end if
+end function
+
+Attack.display_file_options = function()
+	print(" <b>[0]</b> Try to obtain /etc/passwd")
+	print
+	choice = user_input("<b>Select option:<b> ")
+	if choice == "0" then 
+		passwd_file = obtain_passwd_file(self.handler)
+		if passwd_file != null then crack_file(passwd_file)
+	end if
 end function
 
 Attack.display_shell_options = function()
@@ -134,46 +156,11 @@ Attack.execute_shell_terminal = function(remote_shell = null)
 	if remote_shell == null then remote_shell = self.handler
 	print_header()
 	if self.user == "root" then 
-		print("Corrupted target logs")
 		self.corrupt_logs(remote_shell)
+		print("Corrupted target logs")
 	end if
 	print("Connecting...")
 	remote_shell.start_terminal
-end function
-
-Attack.display_computer_options = function()
-	
-	print(" <b>[0]</b> Try to obtain /etc/passwd")
-	print
-	choice = user_input("<b>Select options:<b> ")
-	if choice == "0" then self.obtain_passwd_file
-end function
-
-Attack.obtain_passwd_file = function(remote_computer = null)
-	if self.user == "root" then self.corrupt_logs
-	if remote_computer == null then remote_computer = self.handler
-	remote_passwd = remote_computer.File("/etc/passwd")
-	if remote_passwd != null and remote_passwd.has_permission("r") then
-		passwd_contents = remote_passwd.get_content
-		print
-		print("<b>passwd contents:</b>")
-		passwd_lines = passwd_contents.split("\n")
-		i = 0
-		for line in passwd_lines
-			if line.trim == "" then continue
-			print(" <b>[" + i + "]</b> " + line)
-			i = i + 1
-		end for
-		print
-		choice = user_input("<b>Decipher which line?</b> ").to_int
-		if choice != null then
-			line_tokens = passwd_lines[choice].split(":")
-			user = line_tokens[0]
-			password = crack(line_tokens[1])
-			print("<b>User:</b> " + user)
-			print("<b>Password:</b> " + password)
-		end if
-	end if
 end function
 
 
@@ -420,6 +407,44 @@ crack = function(hash)
         save_hash_to_cache(hash, result)
     end if
     return result
+end function
+
+crack_file = function(file)
+	contents = file.get_content
+	print
+	print("<b>" + file.name + "contents:</b>")
+	lines = contents.split("\n")
+	i = 0
+	for line in lines
+		if line.trim == "" then continue
+		print(" <b>[" + i + "]</b> " + line)
+		i = i + 1
+	end for
+	print
+	choice = 0
+	if lines.len > 1 then choice = user_input("<b>Decipher which line?</b> ").to_int
+	if choice != null then
+		line_tokens = lines[choice].split(":")
+		user = line_tokens[0]
+		password = crack(line_tokens[1])
+		print("<b>User:</b> " + user)
+		print("<b>Password:</b> " + password)
+	end if
+end function
+
+obtain_passwd_file = function(handler)
+	if typeof(handler) == "computer" then
+		remote_computer = handler
+		return remote_computer.File("/etc/passwd")
+	else if typeof(handler) == "file" then
+		etc_dir = crawl_to_dir("/etc", handler)
+		for file in etc_dir.get_files
+			if file.name == "passwd" then return file
+		end for
+	else if typeof(handler) == "shell" then
+		return obtain_passwd_file(handler.host_computer)
+	end if
+	return null
 end function
 
 
