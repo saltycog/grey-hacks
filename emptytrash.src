@@ -1,0 +1,15 @@
+// command: emptytrash
+computer = get_shell.host_computer
+
+trash = computer.File("/root/.Trash")
+
+if trash == null then exit("No .Trash found in /root")
+trash.delete
+computer.create_folder("/root", ".Trash")
+trash = computer.File("/root/.Trash")
+trash.chmod("u-rwx")
+trash.chmod("g-rwx")
+trash.chmod("o-rwx")
+trash.set_owner("root")
+trash.set_group("root")
+print("Emptied trash.")

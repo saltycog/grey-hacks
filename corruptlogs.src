@@ -4,7 +4,7 @@ computer = get_shell.host_computer
 syslog = computer.File("/var/system.log")
 syslog.delete
 
-computer.touch("home/guest", "system.log")
+computer.touch("/home/guest", "system.log")
 syslog = computer.File("/home/guest/system.log")
 syslog.set_content("Your {}'s have been thoroughly salted!")
 syslog.chmod("u-rwx")
@@ -13,3 +13,5 @@ syslog.chmod("o-rwx")
 syslog.set_owner("root")
 syslog.set_group("root")
 syslog.move("/var", "system.log")
+print("Corrupted logs.")
+
