@@ -39,7 +39,7 @@ end function
 
 // Jump to jumpbox
 JumpBox.jump = function()
-	password = user_input("Password: ")
+	password = user_input("Password: ", true)
 	print("<b>Connecting to:<b> " + self.ip)
 	result = get_shell.connect_service(self.ip, self.port, self.user, password, "ssh")
 	if typeof(result) == "shell" then
@@ -51,8 +51,15 @@ end function
 
 // Jumpbox setup
 JumpBox.sync = function()
-	print("IP: " + self.ip)
-	print("Port: " + self.port)
+	password = user_input("Password: ", true)
+	remote_shell = get_shell.connect_service(self.ip, self.port, self.user, password, "ssh")
+	if typeof(remote_shell) != "shell" then exit("<b><color=#FF0000>Couldn't connect.</color></b>")
+	
+	// Sync all the things that matter
+	sync_file("/root/Scans", remote_shell)
+	sync_file("/root/Config/Hashes.txt", remote_shell)
+	sync_file("/bin", remote_shell)
+	sync_file("/etc/apt/sources.txt", remote_shell)
 end function
 
 // Jumpbox teardown
@@ -80,11 +87,11 @@ end function
 // --- Global Functions ------------------------------
 // Print usage details
 print_usage = function()
-	print("<b>Usage: jump (-list/-alias/-setup/-teardown) [alias_name]</b>")
+	print("<b>Usage: jump (-list/-alias/-sync/-teardown) [alias_name]</b>")
 	print("Example (ssh using alias): jump jumpbox_alias")
 	print("Example (list all aliases): jump -list")
 	print("Example (create new alias): jump -alias jumpbox_alias")
-	print("Example (setup jumpbox): jump -setup jumpbox_alias")
+	print("Example (sync tools to jumpbox): jump -sync jumpbox_alias")
 	print("Example (tear down jumpbox): jump -teardown jumpbox_alias")
 end function
 
@@ -94,7 +101,7 @@ get_user_home = function()
 	return "/home/" + active_user
 end function
 
-// Get saved config
+// Get saved jumplist
 get_jumplist_file = function()
 	config_dir = get_user_home + "/Config"
 	computer = get_shell.host_computer
@@ -123,6 +130,17 @@ create_alias = function(alias)
 	end if
 	jumplist_file.set_content jumplist
 	exit("<b>New alias added to jumplist:</b> " + alias)
+end function
+
+sync_file = function(source_path, remote_shell)
+	local_shell = get_shell
+	remote_folder = local_shell.host_computer.File(source_path).parent.path
+	result = local_shell.scp(source_path, remote_folder, remote_shell)
+	if result != true then 
+		print("<b><color=#FF0000>" + result + "</color></b>")
+		return false
+	end if
+	return true
 end function
 
 
