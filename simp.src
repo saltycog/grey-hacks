@@ -14,6 +14,8 @@ verbose = false
 metaxploit = null
 crypto = null
 
+attack_tree = null
+
 
 // --- Attack Class ----------------------------------
 Attack = {}
@@ -28,8 +30,10 @@ Attack.New = function(memory_address, attack_raw)
 	buffer_overflow_raw = attack_lines[0]
 	requirements = attack_lines[1:]
 	buffer_overflow = buffer_overflow_raw.matches("(?<=\<b\>)(.*)(?=\</b\>)").values[0]
-	handler = metalib.overflow(memory_address, buffer_overflow, "password")
+	handler = metalib.overflow(memory_address, buffer_overflow)
 	user = infer_user(handler)
+
+	// TODO: Change ??? behavior to retry overflow with arguments!
 
 	self = new Attack
 	self.memory_address = memory_address
@@ -40,61 +44,97 @@ Attack.New = function(memory_address, attack_raw)
 	return self
 end function
 
-// Perform 
-Attack.probe = function()
-	metaxploit = get_metaxploit
-	result = metalib.overflow(self.memory_address, self.buffer_overflow)
-	return result
-end function
-
-// Execute attack based on handler
-Attack.execute = function()
+Attack.display_attack_options = function()
 	if self.handler == null then
+		self.probe
 		return
 	end if
-	
-	type = typeof(self.handler)
-	if type == "shell" then 
-		self.execute_shell_terminal(self.handler)
-		exit
-	end if
-	
-	if type == "computer" then
-		self.execute_try_get_passwd(self.handler)
-		exit
-	end if
 
-	if type == "file" then
-		print("[ <color=#FF0000><b>No actions know yet for found file:</color> " + result.name + "</b> ]")
-		exit
-	end if
-
-	// Number: Firewall disabled
-	// Number: Change password
-
-	print("[ <color=#FF0000><b>No actions yet for attack type:</color> " + type + "</b> ]")
-	exit
+	print_header("OPTIONS:")
+	handler_type = typeof(self.handler)
+	if handler_type == "shell" then self.display_shell_options
+	if handler_type == "computer" then self.display_computer_options
+	if handler_type == "file" then self.display_file_options
 end function
 
-
-
-// Attempt to download passwd file from attack target.
-Attack.execute_try_get_passwd = function(remote_computer = null)
-	if remote_computer == null then remote_computer = self.handler
-	remote_passwd = remote_computer.File("/etc/passwd")
-	if remote_passwd != null and remote_passwd.has_permission("r") then
-		local_path = current_path
-		local_filename = "passwd_" + remote_computer.get_name
-		local_passwd = local_computer.File(local_path + "/" + local_filename)
-		if local_passwd == null then 
-			local_computer.touch(local_path, local_filename)
-			local_passwd = local_computer.File(local_path + "/" + local_filename)
+Attack.display_computer_options = function()
+	print(" <b>[0]</b> Try to obtain /etc/passwd")
+	print(" <b>[1]</b> Try to obtain user mail credentials")
+	print
+	choice = user_input("<b>Select option:<b> ")
+	if choice == "0" then 
+		passwd_file = obtain_passwd_file(self.handler)
+		if passwd_file != null then 
+			crack_file(passwd_file)
+			user_input("\n", false, true)
+		else
+			print("<b><color=#FF0000>Unable to obtain passwd.</color></b>")
+			user_input("\n", false, true)
 		end if
-		local_passwd.set_content(remote_passwd.get_content)
-		print("<b>Downloaded to: " + local_path + "/" + local_filename)
-		// TODO: Decipher root password
+	else if choice == "1" then
+		mail_file = obtain_mail_file(self.user, self.handler)
+		if mail_file != null then 
+			crack_file(mail_file)
+			user_input("\n", false, true)
+		else
+			print("<b><color=#FF0000>Unable to obtain Mail.txt.</color></b>")
+			user_input("\n", false, true)
+		end if
 	end if
-	exit
+end function
+
+Attack.display_file_options = function()
+	print(" <b>[0]</b> Try to obtain /etc/passwd")
+	print
+	choice = user_input("<b>Select option:<b> ")
+	if choice == "0" then 
+		passwd_file = obtain_passwd_file(self.handler)
+		if passwd_file != null then 
+			crack_file(passwd_file)
+			user_input("\n", false, true)
+		else
+			print("<b><color=#FF0000>Unable to obtain passwd.</color></b>")
+			user_input("\n", false, true)
+		end if
+	end if
+end function
+
+Attack.display_shell_options = function()
+	should_enter = confirmation_prompt("<b>Enter shell as " + self.user + "?</b> ")
+	if should_enter then 
+		self.execute_shell_terminal
+	end if
+end function
+
+// For unknown vulnerability types, try overflow again with optional argument
+Attack.probe = function()
+	print("<b>REQUIREMENTS:</b>")
+	for requirement in self.requirements
+		print(requirement)
+	end for
+	print
+	optional_arg = user_input("<b>Input Probe Argument:</b> ")
+
+	metaxploit = get_metaxploit
+	result = metalib.overflow(self.memory_address, self.buffer_overflow, optional_arg)
+	if result != null then 
+		self.handler = result
+		self.user = infer_user(result)
+	end if
+	user_input("\n", false, true)
+end function
+
+// Connect to attack target and start a terminal session.
+// Clears logs in advance if root obtained.
+Attack.execute_shell_terminal = function(remote_shell = null)
+	if remote_shell == null then remote_shell = self.handler
+	print_header()
+	if self.user == "root" then 
+		self.corrupt_logs(remote_shell)
+		print("Corrupted target logs")
+	end if
+	print("Connecting...")
+	remote_shell.start_terminal
 end function
 
 // "Corrupt" logs on attack target.
@@ -113,54 +153,6 @@ Attack.corrupt_logs = function(handler = null)
 	syslog.set_owner("root")
 	syslog.set_group("root")
 	syslog.move("/var", "system.log")
-end function
-
-Attack.display_attack_options = function()
-	print_header("OPTIONS:")
-	handler_type = typeof(self.handler)
-	if handler_type == "shell" then self.display_shell_options
-	if handler_type == "computer" then self.display_computer_options
-	if handler_type == "file" then self.display_file_options
-end function
-
-Attack.display_computer_options = function()
-	print(" <b>[0]</b> Try to obtain /etc/passwd")
-	print
-	choice = user_input("<b>Select option:<b> ")
-	if choice == "0" then 
-		passwd_file = obtain_passwd_file(self.handler)
-		if passwd_file != null then crack_file(passwd_file)
-	end if
-end function
-
-Attack.display_file_options = function()
-	print(" <b>[0]</b> Try to obtain /etc/passwd")
-	print
-	choice = user_input("<b>Select option:<b> ")
-	if choice == "0" then 
-		passwd_file = obtain_passwd_file(self.handler)
-		if passwd_file != null then crack_file(passwd_file)
-	end if
-end function
-
-Attack.display_shell_options = function()
-	should_enter = confirmation_prompt("<b>Enter shell as " + self.user + "?</b> ")
-	if should_enter then 
-		self.execute_shell_terminal
-	end if
-end function
-
-// Connect to attack target and start a terminal session.
-// Clears logs in advance if root obtained.
-Attack.execute_shell_terminal = function(remote_shell = null)
-	if remote_shell == null then remote_shell = self.handler
-	print_header()
-	if self.user == "root" then 
-		self.corrupt_logs(remote_shell)
-		print("Corrupted target logs")
-	end if
-	print("Connecting...")
-	remote_shell.start_terminal
 end function
 
 
@@ -193,9 +185,9 @@ AttackTree.New = function(scan)
 end function
 
 AttackTree.display_attacks = function()
+	if globals.verbose == false then clear_screen
 	reqs_label = ""
-	if globals.verbose then reqs_label = "REQUIREMENTS"
-	if globals.verbose != true then clear_screen
+	if globals.verbose == true then reqs_label = "REQUIREMENTS"
 
 	print("-" * 55)
 	print(" <b>ID   USER      HANDLER            " + reqs_label + "</b>")
@@ -203,7 +195,7 @@ AttackTree.display_attacks = function()
 	
 	i = 0
 	for attack in self.attacks
-		if attack.handler == null and globals.verbose != true then 
+		if attack.handler == null and globals.port != 0 and globals.port != 8080 and globals.verbose == false then 
 			i = i + 1
 			continue
 		end if
@@ -241,9 +233,10 @@ AttackTree.display_attacks = function()
 	end for
 	print
 	
-	selection = user_input("<b>Select attack:</b> ").to_int
-	if selection < self.attacks.len then 
-		self.attacks[selection].display_attack_options
+	selection = user_input("<b>Select attack:</b> ")
+	if selection == "" then exit
+	if selection.to_int < self.attacks.len then 
+		self.attacks[selection.to_int].display_attack_options
 	else
 
 	end if
@@ -267,9 +260,9 @@ confirmation_prompt = function(prompt, char = "y")
 	if choice.lower.indexOf(char) == 0 then return true
 end function
 
-exit_prompt = function()
-	choice = user_input("<b>Exit simp?</b> ")
-	if confirmation_prompt(choice) then exit()
+exit_prompt = function(prompt = "<b>Exit simp?</b> ")
+	choice = confirmation_prompt(prompt)
+	if choice == true then exit()
 end function
 
 get_metaxploit = function()
@@ -447,6 +440,21 @@ obtain_passwd_file = function(handler)
 	return null
 end function
 
+obtain_mail_file = function(user, handler)
+	if typeof(handler) == "computer" then
+		remote_computer = handler
+		return remote_computer.File("/home/" + user + "/Config/Mail.txt")
+	else if typeof(handler) == "file" then
+		etc_dir = crawl_to_dir("/home/" + user + "/Config", handler)
+		for file in etc_dir.get_files
+			if file.name == "Mail.txt" then return file
+		end for
+	else if typeof(handler) == "shell" then
+		return obtain_email_file(handler.host_computer)
+	end if
+	return null
+end function
+
 
 // --- MAIN ------------------------------------------
 if params.len == 0 or params.len > 2 or params[0] == "-h" or params[0] == "--help" then 
@@ -484,4 +492,7 @@ else
 end if
 
 attack_tree = AttackTree.New(scan)
-attack_tree.display_attacks
+
+while true
+	attack_tree.display_attacks
+end while
