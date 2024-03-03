@@ -1,0 +1,75 @@
+// command: vanish
+// Quickly erases all traces of root activity on local computer.
+
+// --- Globals ---------------------------------------
+paths = []
+paths.push("/root/hackwifi")
+paths.push("/root/Scans")
+paths.push("/root/Config/Hashes.txt")
+paths.push("/root/hackwifi")
+paths.push("/root/ScanLan.exe")
+paths.push("/root/nmap")
+paths.push("/root/rshell-server")
+paths.push("/root/rshell_interface")
+paths.push("/root/rshell")
+paths.push("/root/corruptlogs")
+paths.push("/root/crypto.so")
+paths.push("/root/metaxploit.so")
+paths.push("/root/librshell.so")
+paths.push("/root/simp")
+paths.push("/root/crack")
+paths.push("/root/jump")
+paths.push("/root/emptytrash")
+paths.push("/root/vanish")
+
+
+// --- Global Functions ------------------------------
+delete_tools = function()
+    computer = get_shell.host_computer
+    for path in globals.paths
+        file = computer.File(path)
+        if file != null then file.delete
+    end for
+end function
+
+corrupt_logs = function()
+    computer = get_shell.host_computer
+
+    syslog = computer.File("/var/system.log")
+    syslog.delete
+
+    computer.touch("/home/guest", "system.log")
+    syslog = computer.File("/home/guest/system.log")
+    syslog.set_content("Your {}'s have been thoroughly salted!")
+    syslog.chmod("u-rwx")
+    syslog.chmod("g-rwx")
+    syslog.chmod("o-rwx")
+    syslog.set_owner("root")
+    syslog.set_group("root")
+    syslog.move("/var", "system.log")
+
+    print("Corrupted logs.")
+end function
+
+empty_trash = function()
+    computer = get_shell.host_computer
+
+    trash = computer.File("/root/.Trash")
+
+    if trash == null then exit("No .Trash found in /root")
+    trash.delete
+    computer.create_folder("/root", ".Trash")
+    trash = computer.File("/root/.Trash")
+    trash.chmod("u-rwx")
+    trash.chmod("g-rwx")
+    trash.chmod("o-rwx")
+    trash.set_owner("root")
+    trash.set_group("root")
+
+    print("Emptied trash.")
+end function
+
+// --- MAIN ------------------------------------------
+corrupt_logs
+delete_tools
+empty_trash
