@@ -7,6 +7,13 @@
 TAB = char(9)
 NEWLINE = char(10)
 
+// Format tags
+BOLD = "<b>"
+RED = "<color=#FF0000>"
+GREEN = "<color=#00FF00>"
+YELLOW = "<color=#FFFF00>"
+CYAN = "<color=#00CCFF>"
+
 ip = null
 port = null
 verbose = false
@@ -16,6 +23,21 @@ crypto = null
 
 attack_tree = null
 
+// --- FORMATTING ------------------------------------
+format = function(text, tags)
+	text = tags + text
+	if text.indexOf("<b>") != null then text = text + "</b>"
+	if text.indexOf("<color=#") != null then text = text + "</color>"
+	return text
+end function
+
+bold = function(text)
+	return format(text, BOLD)
+end function
+
+print_error = function(text)
+	print(format(text, BOLD + RED))
+end function
 
 // --- Attack Class ----------------------------------
 Attack = {}
@@ -24,6 +46,7 @@ Attack.buffer_overflow = null
 Attack.details = null
 Attack.handler = null
 Attack.user = null
+Attack.target_ip = null
 
 Attack.New = function(memory_address, attack_raw)
 	attack_lines = attack_raw.split("\n")
@@ -58,17 +81,18 @@ Attack.display_attack_options = function()
 end function
 
 Attack.display_computer_options = function()
-	print(" <b>[0]</b> Try to obtain /etc/passwd")
-	print(" <b>[1]</b> Try to obtain user mail credentials")
+	print(bold(" [0] ") + "Try to obtain /etc/passwd")
+	print(bold(" [1] ") + "Try to obtain user mail credentials")
+	print(bold(" [2] ") + "List users")
 	print
-	choice = user_input("<b>Select option:<b> ")
+	choice = user_input(bold("Select option: "))
 	if choice == "0" then 
 		passwd_file = obtain_passwd_file(self.handler)
 		if passwd_file != null then 
 			crack_file(passwd_file)
 			user_input("\n", false, true)
 		else
-			print("<b><color=#FF0000>Unable to obtain passwd.</color></b>")
+			print_error("Unable to obtain passwd.")
 			user_input("\n", false, true)
 		end if
 	else if choice == "1" then
@@ -77,51 +101,83 @@ Attack.display_computer_options = function()
 			crack_file(mail_file)
 			user_input("\n", false, true)
 		else
-			print("<b><color=#FF0000>Unable to obtain Mail.txt.</color></b>")
+			print_error("Unable to obtain Mail.txt.")
 			user_input("\n", false, true)
 		end if
+	else if choice == "2" then
+		home_dir = self.handler.File("/home")
+		for user in home_dir.get_folders
+			print(user.name)
+		end for
+		user_input("\n", false, true)
 	end if
 end function
 
 Attack.display_file_options = function()
-	print(" <b>[0]</b> Try to obtain /etc/passwd")
+	print(bold(" [0] ") + "Try to obtain /etc/passwd")
 	print
-	choice = user_input("<b>Select option:<b> ")
+	choice = user_input(bold("Select option: "))
 	if choice == "0" then 
 		passwd_file = obtain_passwd_file(self.handler)
 		if passwd_file != null then 
 			crack_file(passwd_file)
 			user_input("\n", false, true)
 		else
-			print("<b><color=#FF0000>Unable to obtain passwd.</color></b>")
+			print_error("Unable to obtain passwd.")
 			user_input("\n", false, true)
 		end if
 	end if
 end function
 
 Attack.display_shell_options = function()
-	should_enter = confirmation_prompt("<b>Enter shell as " + self.user + "?</b> ")
-	if should_enter then 
+	print(bold(" [0] ") + "Try to obtain /etc/passwd")
+	print(bold(" [1] ") + "Try to obtain user mail credentials")
+	print(bold(" [2] ") + "Enter shell")
+	print
+	choice = user_input(bold("Select option: "))
+	if choice == "0" then 
+		passwd_file = obtain_passwd_file(self.handler)
+		if passwd_file != null then 
+			crack_file(passwd_file)
+			user_input("\n", false, true)
+		else
+			print_error("Unable to obtain passwd.")
+			user_input("\n", false, true)
+		end if
+	else if choice == "1" then
+		mail_file = obtain_mail_file(self.user, self.handler)
+		if mail_file != null then 
+			crack_file(mail_file)
+			user_input("\n", false, true)
+		else
+			print_error("Unable to obtain Mail.txt.")
+			user_input("\n", false, true)
+		end if
+	else if choice == "2" then
 		self.execute_shell_terminal
 	end if
 end function
 
 // For unknown vulnerability types, try overflow again with optional argument
-Attack.probe = function()
-	print("<b>REQUIREMENTS:</b>")
-	for requirement in self.requirements
-		print(requirement)
-	end for
-	print
-	optional_arg = user_input("<b>Input Probe Argument:</b> ")
+Attack.probe = function(optional_arg = null, auto_advance = false)
+	if optional_arg == null then
+		print(bold("REQUIREMENTS:"))
+		for requirement in self.requirements
+			print(requirement)
+		end for
+		print
+		optional_arg = user_input("<b>Input Probe Argument:</b> ")
+	end if
 
 	metaxploit = get_metaxploit
 	result = metalib.overflow(self.memory_address, self.buffer_overflow, optional_arg)
 	if result != null then 
 		self.handler = result
 		self.user = infer_user(result)
+		if optional_arg.indexOf(".") != null then self.target_ip = optional_arg
 	end if
-	user_input("\n", false, true)
+	
+	if not auto_advance then user_input("\n", false, true)
 end function
 
 // Connect to attack target and start a terminal session.
@@ -184,6 +240,13 @@ AttackTree.New = function(scan)
 	return self
 end function
 
+AttackTree.recursive_probe = function()
+	probe_arg = user_input(bold("Probe Argument: "))
+	for attack in self.attacks
+		if attack.handler == null then attack.probe(probe_arg, true)
+	end for
+end function
+
 AttackTree.display_attacks = function()
 	if globals.verbose == false then clear_screen
 	reqs_label = ""
@@ -201,13 +264,13 @@ AttackTree.display_attacks = function()
 		end if
 
 		if attack.user == "root" then
-			color = "<color=#00FF00>"
+			color = GREEN
 		else if attack.user == "guest" then
 			color = "<color=#FFFFFF>"
 		else if attack.user == "???" then
 			color = "<color=#303030>"
 		else
-			color = "<color=#FFFF00>"
+			color = YELLOW
 		end if
 		
 		requirements = ""
@@ -221,9 +284,15 @@ AttackTree.display_attacks = function()
 		else
 			handler = typeof(attack.handler)
 		end if
+
+		// Router bounced target
+		if attack.target_ip != null then 
+			handler = handler + " -> " + attack.target_ip
+		end if
+
 		line = " " * 70
 		line = line.insert(0, color)
-		line = line.insert(16, "<b>[" + i + "]</b>")
+		line = line.insert(16, bold("[" + i + "]"))
 		line = line.insert(28, attack.user)
 		line = line.insert(39, handler)
 		line = line.insert(60, requirements)
@@ -231,12 +300,16 @@ AttackTree.display_attacks = function()
 		print(line)
 		i = i + 1
 	end for
-	print
 	
+	print(bold(" [*] ") + "Recursive Probe")
+
+	print
 	selection = user_input("<b>Select attack:</b> ")
 	if selection == "" then exit
 	if selection.to_int < self.attacks.len then 
 		self.attacks[selection.to_int].display_attack_options
+	else if selection == "*" then
+		self.recursive_probe
 	else
 
 	end if
@@ -471,7 +544,8 @@ port = address_tokens[1].to_int
 metaxploit = get_metaxploit
 net_session = metaxploit.net_use(ip, port)
 if not net_session then 
-	exit("<color=#FF0000>Error: Unable to connect to net session.</color>")
+	print_error("Error: Unable to connect to net session.")
+	exit
 end if
 
 // Check for online admins
@@ -483,11 +557,11 @@ metalib = net_session.dump_lib
 cached_scan_filename = metalib.lib_name.replace("\.so", "") + "-" + metalib.version + ".scan"
 cached_scan = get_cached_scan(cached_scan_filename)
 if cached_scan.get_content == "" then
-	print_header("<color=#00FF00>SCANNING:</color> " + metalib.lib_name + " v" + metalib.version)
+	print_header(format("SCANNING: ", GREEN) + metalib.lib_name + " v" + metalib.version)
 	scan = metaxploit.scan(metalib)
 	cached_scan.set_content(scan.join(","))
 else
-	print_header("<color=#00FF00>USING CACHED SCAN:</color> " + cached_scan_filename)
+	print_header(format("USING CACHED SCAN: ", GREEN) + cached_scan_filename)
 	scan = cached_scan.get_content.split(",")
 end if
 
