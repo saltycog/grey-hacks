@@ -84,8 +84,11 @@ Attack.display_computer_options = function()
 	print(bold(" [0] ") + "Try to obtain /etc/passwd")
 	print(bold(" [1] ") + "Try to obtain user mail credentials")
 	print(bold(" [2] ") + "List users")
+	print(bold(" [3] ") + "List running processes")
 	print
 	choice = user_input(bold("Select option: "))
+	
+	// Crack passwords
 	if choice == "0" then 
 		passwd_file = obtain_passwd_file(self.handler)
 		if passwd_file != null then 
@@ -95,6 +98,8 @@ Attack.display_computer_options = function()
 			print_error("Unable to obtain passwd.")
 			user_input("\n", false, true)
 		end if
+
+	// Mail credentials
 	else if choice == "1" then
 		mail_file = obtain_mail_file(self.user, self.handler)
 		if mail_file != null then 
@@ -104,19 +109,31 @@ Attack.display_computer_options = function()
 			print_error("Unable to obtain Mail.txt.")
 			user_input("\n", false, true)
 		end if
+	
+	// List users
 	else if choice == "2" then
 		home_dir = self.handler.File("/home")
 		for user in home_dir.get_folders
 			print(user.name)
 		end for
 		user_input("\n", false, true)
+
+	else if choice == "3" then
+		processes = self.handler.show_procs
+		print(format_columns(processes))
+		user_input("\n", false, true)
 	end if
 end function
 
 Attack.display_file_options = function()
+	print(bold("Permissions: ") + self.handler.permissions)
 	print(bold(" [0] ") + "Try to obtain /etc/passwd")
+	print(bold(" [1] ") + "List users")
+	if self.handler.is_folder then print(bold(" [2] ") + "List folder contents")
 	print
 	choice = user_input(bold("Select option: "))
+
+	// Crack passwords
 	if choice == "0" then 
 		passwd_file = obtain_passwd_file(self.handler)
 		if passwd_file != null then 
@@ -126,6 +143,32 @@ Attack.display_file_options = function()
 			print_error("Unable to obtain passwd.")
 			user_input("\n", false, true)
 		end if
+
+	// List users
+	else if choice == "1" then
+		home_dir = null
+		if self.handler.path != "/home" then
+			home_dir = self.handler
+		else
+			home_dir = crawl_to_dir("/home", self.handler)
+		end if
+		if home_dir == null or not home_dir.has_permission("r") then
+			print_error("Unable to list contents of /home")
+		else
+			for user in home_dir.get_folders
+				print(" - " + user.name)
+			end for
+		end if
+		user_input("\n", false, true)
+
+	// File listings
+	else if choice == "2" then
+		result = [ bold("PERMISSIONS OWNER GROUP SIZE NAME") ]
+		for file in self.handler.get_files
+			result.push(file.permissions + " " + file.owner + " " + file.group + " " + file.size + " " + file.name)
+		end for
+		print(format_columns(result.join("\n")))
+		user_input("\n", false, true)
 	end if
 end function
 
@@ -380,6 +423,10 @@ end function
 crawl_to_dir = function(dir, file_handler)
 	file = file_handler
 	while file.path != "/"
+		if file.parent == null then 
+			print_error("Unable to crawl to '/'")
+			return null
+		end if
 		file = file.parent
 	end while
 	for folder in file.get_folders
@@ -401,16 +448,17 @@ infer_user = function(handler)
 		root_dir = crawl_to_dir("/root", handler)
 		if root_dir != null and root_dir.has_permission("w") then return "root"
 		home_dir = crawl_to_dir("/home", handler)
+		result = null
 		if home_dir != null then
 			for user in home_dir.get_folders
 				if user.name == "guest" then 
-					guest = user
+					result = user
 					continue
 				end if
 				if user.has_permission("w") then return user.name
 			end for
-			if guest.has_permission("w") then return "guest"
 		end if
+		return "guest"
 	end if
 	
 	return "???"
