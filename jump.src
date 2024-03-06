@@ -56,10 +56,11 @@ JumpBox.sync = function()
 	if typeof(remote_shell) != "shell" then exit("<b><color=#FF0000>Couldn't connect.</color></b>")
 	
 	// Sync all the things that matter
-	sync_file("/root/Scans", remote_shell)
-	sync_file("/root/Config/Hashes.txt", remote_shell)
+	collate_files("/root/Scans", remote_shell)
+	// sync_file("/root/Config/Hashes.txt", remote_shell)
 	sync_file("/bin", remote_shell)
 	sync_file("/etc/apt/sources.txt", remote_shell)
+	print("<b>Finished syncing with:</b> " + self.alias)
 end function
 
 // Jumpbox teardown
@@ -133,6 +134,7 @@ create_alias = function(alias)
 end function
 
 sync_file = function(source_path, remote_shell)
+	print("<b>Sending:</b> " + source_path)
 	local_shell = get_shell
 	remote_folder = local_shell.host_computer.File(source_path).parent.path
 	result = local_shell.scp(source_path, remote_folder, remote_shell)
@@ -141,6 +143,35 @@ sync_file = function(source_path, remote_shell)
 		return false
 	end if
 	return true
+end function
+
+collate_files = function(directory_path, remote_shell)
+	local_shell = get_shell
+	local_computer = local_shell.host_computer
+	remote_computer = remote_shell.host_computer
+	local_dir = local_computer.File(directory_path)
+	remote_dir = remote_computer.File(directory_path)
+
+	// Sync: Local -> Remote
+	remote_files = remote_dir.get_files
+	local_files = local_dir.get_files
+	for local_file in local_files
+		remote_file = remote_computer.File(local_file.path)
+		if remote_file == null then
+			print("<b>Sending:</b> " + local_file.name)
+			result = local_shell.scp(local_file.path, directory_path, remote_shell)
+			if typeof(result) == "string" then print("<color=#FF0000>" + result + "</color>")
+		end if
+	end for
+
+	// Sync: Remote -> Local
+	for remote_file in remote_files
+		local_file = local_computer.File(remote_file.path)
+		if local_file == null then 
+			print("<b>Receiving:</b> " + remote_file.name)
+			remote_shell.scp(remote_file.path, directory_path, local_shell)
+		end if
+	end for
 end function
 
 
